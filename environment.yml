@@ -9,6 +9,9 @@ dependencies:
   - pytorch
   - torch-scatter
   - pytorch-lightning
+  - lightning
+  - tokenizers
+  - transformers
   - pip:
       - numpy==1.25.1
       - tqdm==4.66.2
