@@ -118,6 +118,13 @@ class EHRMamba2(nn.Module):
         # Ensure input tensor is of type LongTensor
         concept_ids = concept_ids.long()
         
+        print(f"Input ID range: min={concept_ids.min().item()}, max={concept_ids.max().item()}")
+        print(f"Embedding vocab size: {self.embedding_size}")
+        
+        ##### Error ###########
+        # Input_id range is -7 to 8. It is supposed to be between 0 and vocab_size (768) - 1
+        # Does negative values mean something or can you just set them to zero?
+        
         outputs = self.model(
             input_ids=concept_ids,
             labels=labels,
