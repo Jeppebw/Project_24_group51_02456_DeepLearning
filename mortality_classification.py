@@ -15,7 +15,6 @@ from models.early_stopper import EarlyStopping
 from models.deep_set_attention import DeepSetAttentionModel
 from models.grud import GRUDModel
 from models.ip_nets import InterpolationPredictionModel
-#from models.deep_state_space import StateSpaceModelForClassification
 from models.Mambamodel import EHRMamba2
 
 def train_test(
@@ -101,7 +100,7 @@ def train(
     if model_type == "ehrmamba2":
         model = EHRMamba2(
             vocab_size=model_args.get("vocab_size", 30522),
-            embedding_size=model_args.get("embedding_size", 768),
+            embedding_size=model_args.get("embedding_size", 137),
             max_num_visits=max_seq_length,
             state_size=model_args.get("state_size", 64),
             num_heads=model_args.get("num_heads", 12),

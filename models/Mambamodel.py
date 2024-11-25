@@ -1,6 +1,7 @@
 """Mamba2 model."""
 
 from typing import Any, Dict, Tuple
+import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 from torch.cuda.amp import autocast
@@ -46,7 +47,7 @@ class EHRMamba2(nn.Module):
     def __init__(
         self,
         vocab_size: int,
-        embedding_size: int = 768,
+        embedding_size: int = 137, # Was 768, now 137
         max_num_visits: int = 512,
         max_seq_length: int = 2048,
         state_size: int = 64,
@@ -124,6 +125,18 @@ class EHRMamba2(nn.Module):
         ##### Error ###########
         # Input_id range is -7 to 8. It is supposed to be between 0 and vocab_size (768) - 1
         # Does negative values mean something or can you just set them to zero?
+        concept_ids = torch.abs(concept_ids)
+        
+        # Debug shapes of inputs
+        print(f"concept_ids shape: {concept_ids.shape}")
+        print(f"labels shape: {labels.shape if labels is not None else None}")
+        print(f"attention_mask shape: {attention_mask.shape if attention_mask is not None else None}")
+
+        # Adjust attention_mask if needed
+        if attention_mask is not None and attention_mask.shape[2] != concept_ids.shape[2]:
+            seq_length = concept_ids.shape[2]
+            attention_mask = attention_mask[:, :seq_length]
+            print(f"Adjusted attention_mask shape: {attention_mask.shape}")
         
         outputs = self.model(
             input_ids=concept_ids,
@@ -135,7 +148,14 @@ class EHRMamba2(nn.Module):
         
         # Use the hidden state of the [CLS] token for classification
         hidden_states = outputs.hidden_states[-1]  # Last layer's hidden states
+        
+        # Debugging: Log the shape of hidden_states
+        print(f"Hidden states shape: {hidden_states.shape}")
+        
         cls_token_state = hidden_states[:, 0, :]  # Assuming the first token is [CLS]
+        
+        # Debugging: Log the shape of the [CLS] token state
+        print(f"CLS token state shape: {cls_token_state.shape}")
 
         # Pass through classification head
         logits = self.classification_head(cls_token_state)

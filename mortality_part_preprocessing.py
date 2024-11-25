@@ -2,7 +2,8 @@ import json
 import h5py
 import os
 import numpy as np
-import tqdmconda install -c conda-forge tqdm
+import tqdm
+#conda install -c conda-forge tqdm
 import torch
 from torch.utils.data import Dataset
 
