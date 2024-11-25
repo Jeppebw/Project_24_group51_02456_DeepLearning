@@ -38,6 +38,7 @@ import json
     default="auroc",
     help="what to early stop on. Options are: auroc, auprc, auprc+auroc, or loss",
 )
+@click.option("--state_space_hidden_dim", default=128, help="Hidden dimensions for state-space model")
 @click.option("--seft_n_phi_layers", default=3)
 @click.option("--seft_phi_width", default=32)
 @click.option("--seft_phi_dropout", default=0.)
@@ -114,6 +115,12 @@ def core_function(
             "base_path": base_path,
             "pooling_fxn": model_args["pooling"],
         }
+        # The mamba model
+        if model_type == "EHRmamba2":
+            break
+        # The old state space model
+        if model_type == "state_space":
+            model_settings["state_space_hidden_dim"] = model_args.get("state_space_hidden_dim", 128)
         if model_type == "transformer":
             model_settings["layers"] = model_args["layers"]
         if model_type in ("seft", "transformer"):
@@ -167,13 +174,13 @@ def core_function(
         json.dump(
             {
                 "mean_loss": float(np.mean(accum_loss)),
-                "mean_accuracy": float(np.mean(accum_loss)),
-                "mean_auprc": float(np.mean(accum_loss)),
-                "mean_auroc": float(np.mean(accum_loss)),
+                "mean_accuracy": float(np.mean(accum_accuracy)),
+                "mean_auprc": float(np.mean(accum_auprc)),
+                "mean_auroc": float(np.mean(accum_auroc)),
                 "std_loss": float(np.std(accum_loss)),
-                "std_accuracy": float(np.std(accum_loss)),
-                "std_auprc": float(np.std(accum_loss)),
-                "std_auroc": float(np.std(accum_loss)),
+                "std_accuracy": float(np.std(accum_accuracy)),
+                "std_auprc": float(np.std(accum_auprc)),
+                "std_auroc": float(np.std(accum_auroc)),
             }, f, indent=4,
         )
 

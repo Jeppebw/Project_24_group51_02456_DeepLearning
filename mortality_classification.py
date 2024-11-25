@@ -15,7 +15,7 @@ from models.early_stopper import EarlyStopping
 from models.deep_set_attention import DeepSetAttentionModel
 from models.grud import GRUDModel
 from models.ip_nets import InterpolationPredictionModel
-
+from models.Mambamodel import EHRMamba2
 
 def train_test(
     train_pair,
@@ -97,7 +97,22 @@ def train(
     static_size = test_batch[2].shape[1]
 
     # make a new model and train
-    if model_type == "grud":
+    if model_type == "ehrmamba2":
+        model = EHRMamba2(
+            vocab_size=model_args.get("vocab_size", 30522),
+            embedding_size=model_args.get("embedding_size", 137),
+            max_num_visits=max_seq_length,
+            state_size=model_args.get("state_size", 64),
+            num_heads=model_args.get("num_heads", 12),
+            head_dim=model_args.get("head_dim", 64),
+            num_hidden_layers=model_args.get("num_hidden_layers", 12),
+            expand=model_args.get("expand", 4),
+            conv_kernel=model_args.get("conv_kernel", 4),
+            learning_rate=lr,
+            dropout_prob=model_args.get("dropout_prob", 0.1),
+            chunk_size=model_args.get("chunk_size", 256),
+        )
+    elif model_type == "grud":
         model = GRUDModel(
             input_dim=sensor_count,
             static_dim=static_size,
@@ -161,10 +176,15 @@ def train(
                 delta = delta.to(device)
 
             optimizer.zero_grad()
-
-            predictions = model(
-                x=data, static=static, time=times, sensor_mask=mask, delta=delta
-            )
+            # For the mamba model
+            if model_type == "ehrmamba2":
+                predictions = model(
+                    concept_ids=data, labels=labels.to(device), attention_mask=mask
+                )[1]
+            else:
+                predictions = model(
+                    x=data, static=static, time=times, sensor_mask=mask, delta=delta
+                )
             if type(predictions) == tuple:
                 predictions, recon_loss = predictions
             else:
@@ -190,9 +210,16 @@ def train(
                     times = times.to(device)
                     mask = mask.to(device)
                     delta = delta.to(device)
-                predictions = model(
-                    x=data, static=static, time=times, sensor_mask=mask, delta=delta
-                )
+                # For the mamba model
+                if model_type == "ehrmamba2":
+                    predictions = model(
+                        concept_ids=data,
+                        attention_mask=mask,
+                    )[1]
+                else: 
+                    predictions = model(
+                        x=data, static=static, time=times, sensor_mask=mask, delta=delta
+                    )
                 if type(predictions) == tuple:
                     predictions, _ = predictions
                 predictions = predictions.squeeze(-1)
@@ -277,9 +304,15 @@ def test(
                 times = times.to(device)
                 mask = mask.to(device)
                 delta = delta.to(device)
-            predictions = model(
-                x=data, static=static, time=times, sensor_mask=mask, delta=delta
-            )
+            if model_type == "ehrmamba2":
+                    predictions = model(
+                        concept_ids=data,
+                        attention_mask=mask,
+                    )[1]
+            else:
+                predictions = model(
+                    x=data, static=static, time=times, sensor_mask=mask, delta=delta
+                )
             if type(predictions) == tuple:
                 predictions, _ = predictions
             predictions = predictions.squeeze(-1)
