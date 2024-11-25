@@ -113,12 +113,6 @@ def train(
             dropout_prob=model_args.get("dropout_prob", 0.1),
             chunk_size=model_args.get("chunk_size", 256),
         )
-    elif model_type == "statespace":
-        model = StateSpaceModelForClassification(
-            input_dim=sensor_count,
-            output_dims=2,
-            **model_args
-        )
     elif model_type == "grud":
         model = GRUDModel(
             input_dim=sensor_count,
