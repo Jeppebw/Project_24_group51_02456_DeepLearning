@@ -15,7 +15,7 @@ from models.early_stopper import EarlyStopping
 from models.deep_set_attention import DeepSetAttentionModel
 from models.grud import GRUDModel
 from models.ip_nets import InterpolationPredictionModel
-from models.Mambamodel import EHRMamba2
+from models.Mambamodel import EHRmamba
 
 def train_test(
     train_pair,
@@ -35,10 +35,10 @@ def train_test(
 
     train_collate_fn = PairedDataset.paired_collate_fn_truncate
     val_test_collate_fn = MortalityDataset.non_pair_collate_fn_truncate
-
-    train_dataloader = DataLoader(train_pair, train_batch_size, shuffle=True, num_workers=16, collate_fn=train_collate_fn, pin_memory=True)
-    test_dataloader = DataLoader(test_data, batch_size, shuffle=True, num_workers=16, collate_fn=val_test_collate_fn, pin_memory=True)
-    val_dataloader = DataLoader(val_data, batch_size, shuffle=False, num_workers=16, collate_fn=val_test_collate_fn, pin_memory=True)
+    # num_workers was 16
+    train_dataloader = DataLoader(train_pair, train_batch_size, shuffle=True, num_workers=4, collate_fn=train_collate_fn, pin_memory=True)
+    test_dataloader = DataLoader(test_data, batch_size, shuffle=True, num_workers=4, collate_fn=val_test_collate_fn, pin_memory=True)
+    val_dataloader = DataLoader(val_data, batch_size, shuffle=False, num_workers=4, collate_fn=val_test_collate_fn, pin_memory=True)
 
     # assign GPU
     if torch.cuda.is_available():
@@ -97,20 +97,21 @@ def train(
     static_size = test_batch[2].shape[1]
 
     # make a new model and train
-    if model_type == "ehrmamba2":
-        model = EHRMamba2(
-            vocab_size=model_args.get("vocab_size", 30522),
-            embedding_size=model_args.get("embedding_size", 137),
-            max_num_visits=max_seq_length,
-            state_size=model_args.get("state_size", 64),
-            num_heads=model_args.get("num_heads", 12),
-            head_dim=model_args.get("head_dim", 64),
-            num_hidden_layers=model_args.get("num_hidden_layers", 12),
-            expand=model_args.get("expand", 4),
-            conv_kernel=model_args.get("conv_kernel", 4),
-            learning_rate=lr,
-            dropout_prob=model_args.get("dropout_prob", 0.1),
-            chunk_size=model_args.get("chunk_size", 256),
+    if model_type == "ehrmamba":
+        model = EHRmamba(
+            vocab_size=model_args.get("vocab_size", 30000),
+            #embedding_size=model_args.get("embedding_size", 215),
+            #time_embeddings_size=model_args.get("time_embeddings_size",32)
+            #max_num_visits=max_seq_length,
+            #state_size=model_args.get("state_size", 64),
+            #num_heads=model_args.get("num_heads", 12),
+            #head_dim=model_args.get("head_dim", 64),
+            #num_hidden_layers=model_args.get("num_hidden_layers", 12),
+            #expand=model_args.get("expand", 4),
+            #conv_kernel=model_args.get("conv_kernel", 4),
+            #learning_rate=lr,
+            #dropout_prob=model_args.get("dropout_prob", 0.1),
+            #chunk_size=model_args.get("chunk_size", 256),
         )
     elif model_type == "grud":
         model = GRUDModel(
@@ -177,10 +178,13 @@ def train(
 
             optimizer.zero_grad()
             # For the mamba model
-            if model_type == "ehrmamba2":
-                predictions = model(
-                    concept_ids=data, labels=labels.to(device), attention_mask=mask
-                )[1]
+            if model_type == "ehrmamba":
+                    predictions = model(
+                        time_series_data = data,
+                        static_data = static,
+                        time_array = times,
+                        #sensor_mask = mask,
+                    )[1]
             else:
                 predictions = model(
                     x=data, static=static, time=times, sensor_mask=mask, delta=delta
@@ -211,10 +215,12 @@ def train(
                     mask = mask.to(device)
                     delta = delta.to(device)
                 # For the mamba model
-                if model_type == "ehrmamba2":
+                if model_type == "ehrmamba":
                     predictions = model(
-                        concept_ids=data,
-                        attention_mask=mask,
+                        time_series_data = data,
+                        static_data = static,
+                        time_array = times,
+                        attention_mask = mask,
                     )[1]
                 else: 
                     predictions = model(
@@ -304,10 +310,13 @@ def test(
                 times = times.to(device)
                 mask = mask.to(device)
                 delta = delta.to(device)
-            if model_type == "ehrmamba2":
+            
+            if model_type == "ehrmamba":
                     predictions = model(
-                        concept_ids=data,
-                        attention_mask=mask,
+                        time_series_data = data,
+                        static_data = static,
+                        time_array = times,
+                        attention_mask = mask,
                     )[1]
             else:
                 predictions = model(

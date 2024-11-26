@@ -1,6 +1,6 @@
 """Mamba2 model."""
 
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Tuple, Optional, Union
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
@@ -10,7 +10,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 from torch.nn.functional import gelu
 from transformers import MambaConfig, MambaForCausalLM
 from transformers.activations import ACT2FN
-from models import MambaEmbeddingsForCEHR
+from models.embeddings import MambaEmbeddingsForCEHR
 
 class MambaClassificationHead(nn.Module):
     """Head for sentence-level classification tasks."""
@@ -27,6 +27,7 @@ class MambaClassificationHead(nn.Module):
         self.dense = nn.Linear(hidden_size, hidden_size)
         self.dropout = nn.Dropout(classifier_dropout)
         self.out_proj = nn.Linear(hidden_size, num_labels)
+        self.act_fn = nn.ReLU()
 
         # Choose activation function
         self.hidden_act = ACT2FN.get(hidden_act, nn.ReLU())  # Default to ReLU if not in ACT2FN
@@ -36,7 +37,7 @@ class MambaClassificationHead(nn.Module):
         x = features  # Pooling is done by the forward pass
         x = self.dropout(x)
         x = self.dense(x)
-        x = self.hidden_act(x)
+        x = self.act_fn(x)
         x = self.dropout(x)
 
         return self.out_proj(x)
@@ -51,6 +52,9 @@ class EHRmamba(nn.Module):
         vocab_size: int,
         embedding_size: int = 768,
         time_embeddings_size: int = 32,
+        static_features_size: int = 8,
+        num_measurements: int = 37,
+        max_timesteps: int = 215,
         visit_order_size: int = 3,
         type_vocab_size: int = 9,
         max_num_visits: int = 512,
@@ -64,16 +68,20 @@ class EHRmamba(nn.Module):
         padding_idx: int = 0,
         cls_idx: int = 5,
         use_mambapy: bool = False,
+        num_labels: int = 2,  # Number of labels for classification
+        classifier_dropout: float = 0.1,  # Dropout for the classification head
     ):
         super().__init__()
 
         self.vocab_size = vocab_size
         self.embedding_size = embedding_size
         self.time_embeddings_size = time_embeddings_size
+        self.static_features_size = static_features_size
+        self.num_measurements = num_measurements
+        self.max_timesteps = max_timesteps
         self.visit_order_size = visit_order_size
         self.type_vocab_size = type_vocab_size
         self.max_num_visits = max_num_visits
-        self.max_seq_length = max_seq_length
         self.state_size = state_size
         self.num_hidden_layers = num_hidden_layers
         self.expand = expand
@@ -96,19 +104,29 @@ class EHRmamba(nn.Module):
             eos_token_id=self.padding_idx,
             use_mambapy=self.use_mambapy,
         )
+        
+        # Embedding layer
         self.embeddings = MambaEmbeddingsForCEHR(
             config=self.config,
-            type_vocab_size=self.type_vocab_size,
-            max_num_visits=self.max_num_visits,
+            num_measurements=self.num_measurements,
+            max_timesteps=self.max_timesteps,
+            static_features_size=self.static_features_size,
             time_embeddings_size=self.time_embeddings_size,
-            visit_order_size=self.visit_order_size,
             hidden_dropout_prob=self.dropout_prob,
         )
-        # Initialize weights and apply final processing
-        self.post_init()
 
         # Mamba has its own initialization
         self.model = MambaForCausalLM(config=self.config)
+        
+        # Classification head
+        self.classification_head = MambaClassificationHead(
+            hidden_size=self.embedding_size,
+            classifier_dropout=classifier_dropout,
+            num_labels=num_labels,
+        )
+        
+        # Initialize weights and apply final processing
+        self.post_init()
 
     def _init_weights(self, module: torch.nn.Module) -> None:
         """Initialize the weights."""
@@ -130,96 +148,111 @@ class EHRmamba(nn.Module):
 
     def forward(
         self,
-        inputs: Tuple[
-            torch.Tensor,
-            torch.Tensor,
-            torch.Tensor,
-            torch.Tensor,
-            torch.Tensor,
-            torch.Tensor,
-        ],
+        time_series_data,
+        static_data,
+        time_array,
+        #sensor_mask,
+        #inputs: Tuple[
+        #    torch.Tensor,  # Time series data
+        #    torch.Tensor,  # Static data
+        #    torch.Tensor,  # Time array
+        #    Optional[torch.Tensor],  # Sensor mask
+        #],
         labels: Optional[torch.Tensor] = None,
         output_hidden_states: Optional[bool] = False,
         return_dict: Optional[bool] = True,
-    ) -> Union[Tuple[torch.Tensor, ...], MambaCausalLMOutput]:
+    ): #-> Union[Tuple[torch.Tensor, ...]]:
         """Forward pass for the model."""
-        concept_ids, type_ids, time_stamps, ages, visit_orders, visit_segments = inputs
+       # time_series_data, static_data, time_array, sensor_mask = inputs
+        
+        print("Shape of time_series_data:", time_series_data.shape)
+        print("Shape of Static:", static_data.shape)
+        print("Shape of time_array:", time_array.shape)
+        #print("Shape of sensor_mask:", sensor_mask.shape)
+        
+        # Step 1: Embed the inputs
         inputs_embeds = self.embeddings(
-            input_ids=concept_ids,
-            token_type_ids_batch=type_ids,
-            time_stamps=time_stamps,
-            ages=ages,
-            visit_orders=visit_orders,
-            visit_segments=visit_segments,
+            time_series_data=time_series_data,
+            static_data=static_data,
+            time_array=time_array,
+            #sensor_mask=sensor_mask,
         )
+        # In main model forward pass
+        print("Shape of inputs_embeds:", inputs_embeds.shape)
 
-        if labels is None:
-            labels = concept_ids
+        # Step 2: Process through Mamba model
+        outputs = self.model(inputs_embeds=inputs_embeds, output_hidden_states=True)
+        
+        # Step 3: Apply classification head
+        # Assuming the last hidden state from Mamba model is the pooled representation
+        pooled_output = torch.mean(outputs.hidden_states[-1], dim=1)  # Global average pooling
+        logits = self.classification_head(pooled_output)
+        
+        # Calculate loss if labels are provided
+        if labels is not None:
+            loss_fn = nn.CrossEntropyLoss()
+            loss = loss_fn(logits, labels)
+            return {"logits": logits, "loss": loss}
 
-        return self.model(
-            inputs_embeds=inputs_embeds,
-            labels=labels,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
-        )
+        return logits
 
-    def training_step(self, batch: Dict[str, Any], batch_idx: int) -> Any:
-        """Train model on training dataset."""
-        inputs = (
-            batch["concept_ids"],
-            batch["type_ids"],
-            batch["time_stamps"],
-            batch["ages"],
-            batch["visit_orders"],
-            batch["visit_segments"],
-        )
-        labels = batch["labels"]
+    #def training_step(self, batch: Dict[str, Any], batch_idx: int) -> Any:
+    #    """Train model on training dataset."""
+    #    inputs = (
+    #        batch["concept_ids"],
+    #        batch["type_ids"],
+    #        batch["time_stamps"],
+    #        batch["ages"],
+    #        batch["visit_orders"],
+    #        batch["visit_segments"],
+    #    )
+    #    labels = batch["labels"]
+    #
+    #    # Ensure use of mixed precision
+    #    with autocast():
+    #        loss = self(
+    #            inputs,
+    #            labels=labels,
+    #            return_dict=True,
+    #        ).loss
+    #
+    #    (current_lr,) = self.lr_schedulers().get_last_lr()
+    #    self.log_dict(
+    #        dictionary={"train_loss": loss, "lr": current_lr},
+    #        on_step=True,
+    #        prog_bar=True,
+    #        sync_dist=True,
+    #    )
+    #    return loss
 
-        # Ensure use of mixed precision
-        with autocast():
-            loss = self(
-                inputs,
-                labels=labels,
-                return_dict=True,
-            ).loss
-
-        (current_lr,) = self.lr_schedulers().get_last_lr()
-        self.log_dict(
-            dictionary={"train_loss": loss, "lr": current_lr},
-            on_step=True,
-            prog_bar=True,
-            sync_dist=True,
-        )
-        return loss
-
-    def validation_step(self, batch: Dict[str, Any], batch_idx: int) -> Any:
-        """Evaluate model on validation dataset."""
-        inputs = (
-            batch["concept_ids"],
-            batch["type_ids"],
-            batch["time_stamps"],
-            batch["ages"],
-            batch["visit_orders"],
-            batch["visit_segments"],
-        )
-        labels = batch["labels"]
-
-        # Ensure use of mixed precision
-        with autocast():
-            loss = self(
-                inputs,
-                labels=labels,
-                return_dict=True,
-            ).loss
-
-        (current_lr,) = self.lr_schedulers().get_last_lr()
+    #def validation_step(self, batch: Dict[str, Any], batch_idx: int) -> Any:
+    #    """Evaluate model on validation dataset."""
+    #    inputs = (
+    #        batch["concept_ids"],
+    #        batch["type_ids"],
+    #        batch["time_stamps"],
+    #        batch["ages"],
+    #        batch["visit_orders"],
+    #        batch["visit_segments"],
+    #    )
+    #    labels = batch["labels"]
+    #
+    #    # Ensure use of mixed precision
+    #    with autocast():
+    #        loss = self(
+    #            inputs,
+    #            labels=labels,
+    #            return_dict=True,
+    #        ).loss
+    #
+    #    (current_lr,) = self.lr_schedulers().get_last_lr()
         #self.log_dict(
         #    dictionary={"val_loss": loss, "lr": current_lr},
         #    on_step=True,
         #    prog_bar=True,
         #    sync_dist=True,
         #)
-        return loss
+    #    return loss
 
     def configure_optimizers(
         self,

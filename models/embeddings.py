@@ -5,7 +5,7 @@ from typing import Any, Optional
 
 import torch
 from torch import nn
-from transformers import BigBirdConfig, MambaConfig
+from transformers import MambaConfig
 
 
 class TimeEmbeddingLayer(nn.Module):
@@ -115,49 +115,52 @@ class MambaEmbeddingsForCEHR(nn.Module):
     def __init__(
         self,
         config: MambaConfig,
-        type_vocab_size: int = 9,
-        max_num_visits: int = 512,
+        num_measurements: int = 37,
+        max_timesteps: int = 215,
+        static_features_size: int = 8,
         time_embeddings_size: int = 32,
-        visit_order_size: int = 3,
         layer_norm_eps: float = 1e-12,
         hidden_dropout_prob: float = 0.1,
     ) -> None:
         """Initiate wrapper class for embeddings used in Mamba CEHR classes."""
         super().__init__()
-        self.type_vocab_size = type_vocab_size
-        self.max_num_visits = max_num_visits
+        self.hidden_size = config.hidden_size
         self.layer_norm_eps = layer_norm_eps
         self.hidden_dropout_prob = hidden_dropout_prob
-        self.hidden_size = config.hidden_size
+        self.num_measurements = num_measurements
 
-        self.word_embeddings = nn.Embedding(
-            config.vocab_size,
-            config.hidden_size,
-            padding_idx=config.pad_token_id,
-        )
-        self.token_type_embeddings = nn.Embedding(
-            self.type_vocab_size,
-            config.hidden_size,
-        )
-        self.visit_order_embeddings = nn.Embedding(
-            self.max_num_visits,
-            config.hidden_size,
-        )
+        # Embeddings for the time series measurements
+        self.measurement_embeddings = nn.Linear(
+            num_measurements, config.hidden_size
+        )  # Project measurements to hidden size
+
+        # Static data embeddings
+        self.static_embeddings = nn.Linear(
+            static_features_size, config.hidden_size
+        )  # Project static features to hidden size
+
+        # Positional and temporal embeddings
+        self.positional_embeddings = nn.Embedding(max_timesteps, config.hidden_size)
         self.time_embeddings = TimeEmbeddingLayer(
             embedding_size=time_embeddings_size,
-            is_time_delta=True,
+            is_time_delta=False,  # Change as per your time array use case
         )
-        self.age_embeddings = TimeEmbeddingLayer(
-            embedding_size=time_embeddings_size,
-        )
-        self.visit_segment_embeddings = VisitEmbedding(
-            visit_order_size=visit_order_size,
-            embedding_size=config.hidden_size,
-        )
+        
+        # Combine embeddings and scale back
         self.scale_back_concat_layer = nn.Linear(
-            config.hidden_size + 2 * time_embeddings_size,
-            config.hidden_size,
-        )
+            config.hidden_size * 2 + time_embeddings_size, config.hidden_size
+        )  # Combine measurement, positional, and static embeddings        
+        
+        # Part of the old EHRMamba code
+        
+        #self.age_embeddings = TimeEmbeddingLayer(
+        #    embedding_size=time_embeddings_size,
+        #)
+        #
+        #self.scale_back_concat_layer = nn.Linear(
+        #    config.hidden_size + 2 * time_embeddings_size,
+        #    config.hidden_size,
+        #)
 
         # self.LayerNorm is not snake-cased to stick with TensorFlow model
         # variable name and be able to load any TensorFlow checkpoint file.
@@ -168,53 +171,66 @@ class MambaEmbeddingsForCEHR(nn.Module):
 
     def forward(
         self,
-        input_ids: Optional[torch.Tensor] = None,
-        inputs_embeds: Optional[torch.Tensor] = None,
-        token_type_ids_batch: Optional[torch.Tensor] = None,
-        time_stamps: Optional[torch.Tensor] = None,
-        ages: Optional[torch.Tensor] = None,
-        visit_orders: Optional[torch.Tensor] = None,
-        visit_segments: Optional[torch.Tensor] = None,
+        time_series_data: torch.Tensor,
+        static_data: torch.Tensor,
+        time_array: torch.Tensor,
+        sensor_mask: Optional[torch.Tensor] = None,
     ) -> Any:
         """Return the final embeddings of concept ids.
 
         Parameters
         ----------
-        input_ids: torch.Tensor
-            The input data (concept_ids) to be embedded.
-        inputs_embeds : torch.Tensor
-            The embeddings of the input data.
-        token_type_ids_batch : torch.Tensor
-            The token type IDs of the input data.
-        time_stamps : torch.Tensor
-            Time stamps of the input data.
-        ages : torch.Tensor
-            Ages of the input data.
-        visit_orders : torch.Tensor
-            Visit orders of the input data.
-        visit_segments : torch.Tensor
-            Visit segments of the input data.
+        time_series_data : torch.Tensor
+            Time series input data of shape (batch_size, num_measurements, timesteps).
+        static_data : torch.Tensor
+            Static input data of shape (batch_size, static_features_size).
+        time_array : torch.Tensor
+            Time array of shape (batch_size, timesteps).
+        sensor_mask : torch.Tensor, optional
+            Sensor mask for valid/invalid data of shape (batch_size, num_measurements, timesteps).
         """
-        if inputs_embeds is None:
-            inputs_embeds = self.word_embeddings(input_ids)
+         # (1) Measurement embeddings (time series data)
+        # Input: (batch_size, num_features, timesteps)
+        # Linear operates on the num_features axis
+        batch_size, num_features, timesteps = time_series_data.shape
+        ts_embeds = self.measurement_embeddings(time_series_data.permute(0, 2, 1))  
+        # Output shape: (batch_size, timesteps, hidden_size)
 
-        # Using cached values from a prior cache_input call
-        time_stamps_embeds = self.time_embeddings(time_stamps)
-        ages_embeds = self.age_embeddings(ages)
-        visit_segments_embeds = self.visit_segment_embeddings(visit_segments)
-        visit_order_embeds = self.visit_order_embeddings(visit_orders)
-        token_type_embeds = self.token_type_embeddings(token_type_ids_batch)
+        print(f"Shape of time-series embedded: {ts_embeds.shape}")
+        # Apply sensor mask if provided
+        if sensor_mask is not None:
+            # Ensure sensor_mask is broadcastable with ts_embeds
+            sensor_mask = sensor_mask.unsqueeze(-1)  # Shape: (batch_size, num_features, timesteps, 1)
+            ts_embeds = ts_embeds * sensor_mask.permute(0, 2, 1, 3).squeeze(-1)  # Shape: (batch_size, timesteps, hidden_size)
 
-        inputs_embeds = torch.cat(
-            (inputs_embeds, time_stamps_embeds, ages_embeds),
-            dim=-1,
-        )
+        # (2) Static data embeddings
+        # Input: (batch_size, static_features_size)
+        static_embeds = self.static_embeddings(static_data)
+        static_embeds = static_embeds.unsqueeze(1).expand(-1, timesteps, -1)  
+        # Broadcast over timesteps: (batch_size, timesteps, hidden_size)
 
-        inputs_embeds = self.tanh(self.scale_back_concat_layer(inputs_embeds))
-        embeddings = inputs_embeds + token_type_embeds
-        embeddings += visit_order_embeds
-        embeddings += visit_segments_embeds
+        # (3) Positional embeddings for timesteps
+        position_ids = torch.arange(timesteps, dtype=torch.long, device=ts_embeds.device)
+        position_ids = position_ids.unsqueeze(0).expand(batch_size, -1)
+        pos_embeds = self.positional_embeddings(position_ids)  
+        # Output shape: (batch_size, timesteps, hidden_size)
 
-        embeddings = self.dropout(embeddings)
+        # (4) Time embeddings
+        time_embeds = self.time_embeddings(time_array)  
+        # Output shape: (batch_size, timesteps, time_embeddings_size)
 
-        return self.LayerNorm(embeddings)
+        # (5) Combine embeddings
+        # Concatenate measurement, static, and positional embeddings
+        combined_embeds = torch.cat((ts_embeds, static_embeds, time_embeds), dim=-1)
+        # Shape after concatenation: (batch_size, timesteps, hidden_size * 3)
+
+        print(f"Shape of combined embeddings: {combined_embeds.shape}")
+
+        # Scale back to hidden size
+        combined_embeds = self.tanh(self.scale_back_concat_layer(combined_embeds))
+
+        # (6) Apply dropout and layer normalization
+        combined_embeds = self.dropout(combined_embeds)
+        combined_embeds = self.LayerNorm(combined_embeds)
+
+        return combined_embeds
