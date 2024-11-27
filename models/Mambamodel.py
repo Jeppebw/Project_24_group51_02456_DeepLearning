@@ -39,8 +39,9 @@ class MambaClassificationHead(nn.Module):
         x = self.dense(x)
         x = self.act_fn(x)
         x = self.dropout(x)
+        logits = self.out_proj(x)
 
-        return self.out_proj(x)
+        return logits
 
 ############ Mamba model 1 #############
 
@@ -186,10 +187,15 @@ class EHRmamba(nn.Module):
         # Step 3: Apply classification head
         # Assuming the last hidden state from Mamba model is the pooled representation
         pooled_output = torch.mean(outputs.hidden_states[-1], dim=1)  # Global average pooling
+        print(f"Shape of pooled_output: {pooled_output.shape}")  # Ensure this is [batch_size, hidden_size]
+
+        
         logits = self.classification_head(pooled_output)
+        print("Shape of logits:", logits.shape)
         
         # Calculate loss if labels are provided
         if labels is not None:
+            print(f"Shape of labels: {labels.shape}")
             loss_fn = nn.CrossEntropyLoss()
             loss = loss_fn(logits, labels)
             return {"logits": logits, "loss": loss}

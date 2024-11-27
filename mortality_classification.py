@@ -175,7 +175,6 @@ def train(
                 times = times.to(device)
                 mask = mask.to(device)
                 delta = delta.to(device)
-
             optimizer.zero_grad()
             # For the mamba model
             if model_type == "ehrmamba":
@@ -184,16 +183,22 @@ def train(
                         static_data = static,
                         time_array = times,
                         #sensor_mask = mask,
-                    )[1]
+                    )
             else:
                 predictions = model(
                     x=data, static=static, time=times, sensor_mask=mask, delta=delta
                 )
+            print(f"Logits shape: {predictions.shape}, Labels shape: {labels.shape}")
             if type(predictions) == tuple:
                 predictions, recon_loss = predictions
             else:
                 recon_loss = 0
-            predictions = predictions.squeeze(-1)
+            
+            if model_type == "ehrmamba":
+                predictions = predictions
+            else:
+                predictions = predictions.squeeze(-1)
+            
             loss = criterion(predictions.cpu(), labels) + recon_loss
             loss_list.append(loss.item())
             loss.backward()
@@ -221,13 +226,16 @@ def train(
                         static_data = static,
                         time_array = times,
                         attention_mask = mask,
-                    )[1]
+                    )
                 else: 
                     predictions = model(
                         x=data, static=static, time=times, sensor_mask=mask, delta=delta
                     )
                 if type(predictions) == tuple:
                     predictions, _ = predictions
+                if model_type == "ehrmamba":
+                predictions = predictions
+                else:
                 predictions = predictions.squeeze(-1)
                 predictions_list = torch.cat(
                     (predictions_list, predictions.cpu()), dim=0
@@ -310,21 +318,24 @@ def test(
                 times = times.to(device)
                 mask = mask.to(device)
                 delta = delta.to(device)
-            
+                
             if model_type == "ehrmamba":
                     predictions = model(
                         time_series_data = data,
                         static_data = static,
                         time_array = times,
                         attention_mask = mask,
-                    )[1]
+                    )
             else:
                 predictions = model(
                     x=data, static=static, time=times, sensor_mask=mask, delta=delta
                 )
             if type(predictions) == tuple:
                 predictions, _ = predictions
-            predictions = predictions.squeeze(-1)
+            if model_type == "ehrmamba":
+                predictions = predictions
+            else:
+                predictions = predictions.squeeze(-1)
             predictions_list = torch.cat((predictions_list, predictions.cpu()), dim=0)
     loss = criterion(predictions_list.cpu(), labels_list)
     print(f"Test Loss: {loss}")
