@@ -188,7 +188,7 @@ def train(
                 predictions = model(
                     x=data, static=static, time=times, sensor_mask=mask, delta=delta
                 )
-            print(f"Logits shape: {predictions.shape}, Labels shape: {labels.shape}")
+            
             if type(predictions) == tuple:
                 predictions, recon_loss = predictions
             else:
