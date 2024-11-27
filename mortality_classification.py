@@ -234,9 +234,9 @@ def train(
                 if type(predictions) == tuple:
                     predictions, _ = predictions
                 if model_type == "ehrmamba":
-                predictions = predictions
+                    predictions = predictions
                 else:
-                predictions = predictions.squeeze(-1)
+                    predictions = predictions.squeeze(-1)
                 predictions_list = torch.cat(
                     (predictions_list, predictions.cpu()), dim=0
                 )
