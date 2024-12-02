@@ -196,7 +196,7 @@ class MambaEmbeddingsForCEHR(nn.Module):
         ts_embeds = self.measurement_embeddings(time_series_data.permute(0, 2, 1))  
         # Output shape: (batch_size, timesteps, hidden_size)
 
-        print(f"Shape of time-series embedded: {ts_embeds.shape}")
+        #print(f"Shape of time-series embedded: {ts_embeds.shape}")
         # Apply sensor mask if provided
         if sensor_mask is not None:
             # Ensure sensor_mask is broadcastable with ts_embeds
@@ -224,7 +224,7 @@ class MambaEmbeddingsForCEHR(nn.Module):
         combined_embeds = torch.cat((ts_embeds, static_embeds, time_embeds), dim=-1)
         # Shape after concatenation: (batch_size, timesteps, hidden_size * 3)
 
-        print(f"Shape of combined embeddings: {combined_embeds.shape}")
+        #print(f"Shape of combined embeddings: {combined_embeds.shape}")
 
         # Scale back to hidden size
         combined_embeds = self.tanh(self.scale_back_concat_layer(combined_embeds))

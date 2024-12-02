@@ -36,9 +36,9 @@ def train_test(
     train_collate_fn = PairedDataset.paired_collate_fn_truncate
     val_test_collate_fn = MortalityDataset.non_pair_collate_fn_truncate
     # num_workers was 16
-    train_dataloader = DataLoader(train_pair, train_batch_size, shuffle=True, num_workers=4, collate_fn=train_collate_fn, pin_memory=True)
-    test_dataloader = DataLoader(test_data, batch_size, shuffle=True, num_workers=4, collate_fn=val_test_collate_fn, pin_memory=True)
-    val_dataloader = DataLoader(val_data, batch_size, shuffle=False, num_workers=4, collate_fn=val_test_collate_fn, pin_memory=True)
+    train_dataloader = DataLoader(train_pair, train_batch_size, shuffle=True, num_workers=16, collate_fn=train_collate_fn, pin_memory=True)
+    test_dataloader = DataLoader(test_data, batch_size, shuffle=True, num_workers=16, collate_fn=val_test_collate_fn, pin_memory=True)
+    val_dataloader = DataLoader(val_data, batch_size, shuffle=False, num_workers=16, collate_fn=val_test_collate_fn, pin_memory=True)
 
     # assign GPU
     if torch.cuda.is_available():
@@ -99,7 +99,7 @@ def train(
     # make a new model and train
     if model_type == "ehrmamba":
         model = EHRmamba(
-            vocab_size=model_args.get("vocab_size", 30000),
+            vocab_size=model_args.get("vocab_size", 150),
             #embedding_size=model_args.get("embedding_size", 215),
             #time_embeddings_size=model_args.get("time_embeddings_size",32)
             #max_num_visits=max_seq_length,
@@ -225,7 +225,7 @@ def train(
                         time_series_data = data,
                         static_data = static,
                         time_array = times,
-                        attention_mask = mask,
+                        #attention_mask = mask,
                     )
                 else: 
                     predictions = model(
@@ -324,7 +324,7 @@ def test(
                         time_series_data = data,
                         static_data = static,
                         time_array = times,
-                        attention_mask = mask,
+                        #attention_mask = mask,
                     )
             else:
                 predictions = model(

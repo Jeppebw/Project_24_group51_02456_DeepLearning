@@ -1,4 +1,4 @@
-"""Mamba2 model."""
+"""Mamba model."""
 
 from typing import Any, Dict, Tuple, Optional, Union
 import torch
@@ -17,7 +17,7 @@ class MambaClassificationHead(nn.Module):
 
     def __init__(
         self,
-        hidden_size: int = 768,  # Size of the hidden states from the base model
+        hidden_size: int = 64,  # Size of the hidden states from the base model
         classifier_dropout: float = 0.1,  # Dropout probability
         num_labels: int = 2,  # Number of classes for classification
         hidden_act: str = "gelu",  # Activation function
@@ -51,7 +51,7 @@ class EHRmamba(nn.Module):
     def __init__(
         self,
         vocab_size: int,
-        embedding_size: int = 768,
+        embedding_size: int = 60,
         time_embeddings_size: int = 32,
         static_features_size: int = 8,
         num_measurements: int = 37,
@@ -60,8 +60,8 @@ class EHRmamba(nn.Module):
         type_vocab_size: int = 9,
         max_num_visits: int = 512,
         max_seq_length: int = 2048,
-        state_size: int = 16,
-        num_hidden_layers: int = 32,
+        state_size: int = 8,
+        num_hidden_layers: int = 4,
         expand: int = 2,
         conv_kernel: int = 4,
         learning_rate: float = 5e-5,
@@ -166,9 +166,9 @@ class EHRmamba(nn.Module):
         """Forward pass for the model."""
        # time_series_data, static_data, time_array, sensor_mask = inputs
         
-        print("Shape of time_series_data:", time_series_data.shape)
-        print("Shape of Static:", static_data.shape)
-        print("Shape of time_array:", time_array.shape)
+        #print("Shape of time_series_data:", time_series_data.shape)
+        #print("Shape of Static:", static_data.shape)
+        #print("Shape of time_array:", time_array.shape)
         #print("Shape of sensor_mask:", sensor_mask.shape)
         
         # Step 1: Embed the inputs
@@ -179,7 +179,7 @@ class EHRmamba(nn.Module):
             #sensor_mask=sensor_mask,
         )
         # In main model forward pass
-        print("Shape of inputs_embeds:", inputs_embeds.shape)
+        #print("Shape of inputs_embeds:", inputs_embeds.shape)
 
         # Step 2: Process through Mamba model
         outputs = self.model(inputs_embeds=inputs_embeds, output_hidden_states=True)
@@ -187,11 +187,11 @@ class EHRmamba(nn.Module):
         # Step 3: Apply classification head
         # Assuming the last hidden state from Mamba model is the pooled representation
         pooled_output = torch.mean(outputs.hidden_states[-1], dim=1)  # Global average pooling
-        print(f"Shape of pooled_output: {pooled_output.shape}")  # Ensure this is [batch_size, hidden_size]
+        #print(f"Shape of pooled_output: {pooled_output.shape}")  # Ensure this is [batch_size, hidden_size]
 
         
         logits = self.classification_head(pooled_output)
-        print("Shape of logits:", logits.shape)
+        #print("Shape of logits:", logits.shape)
         
         # Calculate loss if labels are provided
         if labels is not None:
