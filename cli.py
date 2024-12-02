@@ -116,7 +116,7 @@ def core_function(
             "pooling_fxn": model_args["pooling"],
         }
         # The mamba model
-        if model_type == "EHRmamba2":
+        if model_type == "EHRmamba":
             break
         # The old state space model
         if model_type == "state_space":
