@@ -1,0 +1,1 @@
+{"model_type": "ehrmamba", "batch_size": 16, "epochs": 100, "dataset": "physionet2012", "learning_rate": 0.0001, "patience": 5, "early_stop_criteria": "auroc", "base_path": "./P12data", "pooling_fxn": "max"}
