@@ -17,7 +17,7 @@ class MambaClassificationHead(nn.Module):
 
     def __init__(
         self,
-        hidden_size: int = 64,  # Size of the hidden states from the base model
+        hidden_size: int = 16,  # Size of the hidden states from the base model - was 32
         classifier_dropout: float = 0.1,  # Dropout probability
         num_labels: int = 2,  # Number of classes for classification
         hidden_act: str = "gelu",  # Activation function
@@ -51,7 +51,7 @@ class EHRmamba(nn.Module):
     def __init__(
         self,
         vocab_size: int,
-        embedding_size: int = 60,
+        embedding_size: int = 25, #Was 50, 32 for less param
         time_embeddings_size: int = 32,
         static_features_size: int = 8,
         num_measurements: int = 37,
@@ -60,17 +60,17 @@ class EHRmamba(nn.Module):
         type_vocab_size: int = 9,
         max_num_visits: int = 512,
         max_seq_length: int = 2048,
-        state_size: int = 8,
-        num_hidden_layers: int = 4,
+        state_size: int = 2, #Was 10, 8 for less param
+        num_hidden_layers: int = 1, # was 2
         expand: int = 2,
-        conv_kernel: int = 4,
+        conv_kernel: int = 3, # was 4
         learning_rate: float = 5e-5,
         dropout_prob: float = 0.1,
         padding_idx: int = 0,
         cls_idx: int = 5,
         use_mambapy: bool = False,
         num_labels: int = 2,  # Number of labels for classification
-        classifier_dropout: float = 0.1,  # Dropout for the classification head
+        classifier_dropout: float = 0.2,  # Dropout for the classification head - was 0.1
     ):
         super().__init__()
 

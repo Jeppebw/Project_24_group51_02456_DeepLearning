@@ -99,7 +99,7 @@ def train(
     # make a new model and train
     if model_type == "ehrmamba":
         model = EHRmamba(
-            vocab_size=model_args.get("vocab_size", 150),
+            vocab_size=model_args.get("vocab_size", 25), # was 100, 25 for less param
             #embedding_size=model_args.get("embedding_size", 215),
             #time_embeddings_size=model_args.get("time_embeddings_size",32)
             #max_num_visits=max_seq_length,
