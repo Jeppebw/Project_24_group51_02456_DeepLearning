@@ -4,16 +4,13 @@ Project 24 for 02456 2024
 # Background
 This repository allows you to train and test a variety of electronic health record (EHR) classification models on mortality prediction for the Physionet 2012 Challenge (`P12`) dataset. More information on the dataset can be found here (https://physionet.org/content/challenge-2012/1.0.0/). Note that the data in the repository has already been preprocessed (outliers removed, normalized) in accordance with https://github.com/ExpectationMax/medical_ts_datasets/tree/master and saved as 5 randomized splits of train/validation/test data. Adam is used for optimization.
 
-# Create Environment
-The dependencies are listed for python 3.9.
 
-To create a venv, run: 
+# Run EHRMamba model
+All of the hyperparameters except the one below are defined in the model script. To run the model run the following command (_Note: you should unzip the data files before running these, and change the output paths in the commands_):
 
-`pip install -r requirements.txt` 
+`python cli.py --output_path=your/path/here --epochs=100 --batch_size=16 --model_type=ehrmamba --lr=0.001 --patience=5`
 
-
-
-# Run models 
+# Run baseline models 
 4 baseline models have been implemented in `Pytorch` and can be trained/tested on `P12`. Each has a unique set of hyperparameters that can be modified, but I've gotten the best performance by running the following commands (_Note: you should unzip the data files before running these, and change the output paths in the commands_):
 
 `transformer` (https://arxiv.org/abs/1706.03762):
